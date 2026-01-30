@@ -1,0 +1,12 @@
+# 排除 deploymaster-pro 工程 (用户要求)
+deploymaster-pro/
+deploymaster-pro.zip
+
+# Wails/Go 临时文件
+deploymaster-pro-wails/build/bin/
+deploymaster-pro-wails/frontend/dist/
+deploymaster-pro-wails/frontend/node_modules/
+
+# 系统文件
+.DS_Store
+*.log
