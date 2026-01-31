@@ -113,6 +113,14 @@ const handleDeleteTemplate = async (templateId: string) => {
   await taskService.deleteTemplate(templateId);
 };
 
+const handleDeleteRun = async (runId: string) => {
+  await taskService.deleteRun(runId);
+};
+
+const handleDeleteRunsByTask = async (taskId: string) => {
+  await taskService.deleteRunsByTask(taskId);
+};
+
 const handleViewLogs = (taskId: string) => {
   selectedLogTaskId.value = taskId;
   activeTab.value = 'logs';
@@ -165,28 +173,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col h-full bg-white text-slate-900 font-sans overflow-hidden">
-    <!-- Window Header (Custom Titlebar area) -->
-    <div class="h-10 bg-slate-900 flex items-center justify-between px-4 shrink-0 select-none">
-      <div class="flex items-center space-x-3">
-        <div class="flex space-x-1.5">
-          <div class="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-          <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-          <div class="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
-        </div>
-        <div class="flex items-center space-x-2 text-white/40 text-[10px] uppercase font-black tracking-widest ml-4">
-          <i class="fa-solid fa-rocket text-blue-500"></i>
-          <span>DeployMaster Pro</span>
-          <span class="text-white/20">|</span>
-          <span class="text-blue-400">v2.5.0-Release</span>
-        </div>
-      </div>
-      <div class="flex items-center space-x-6 text-white/30 text-[9px] font-bold">
-        <span class="flex items-center space-x-1.5"><i class="fa-solid fa-shield-halved"></i> <span>SECURE
-            MODE</span></span>
-        <span class="flex items-center space-x-1.5"><i class="fa-solid fa-server"></i> <span>CLUSTER: ON</span></span>
-      </div>
-    </div>
-
     <div class="flex flex-1 overflow-hidden">
       <!-- Sidebar Navigation -->
       <Sidebar :activeTab="activeTab" @update:activeTab="(v) => activeTab = v" />
@@ -197,7 +183,8 @@ onBeforeUnmount(() => {
 
         <!-- Main Content Area -->
         <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
-          <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" />
+          <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" :runs="runs"
+            @viewAllRuns="activeTab = 'logs'" />
 
           <SVNManager v-else-if="activeTab === 'svn'" :resources="svnService.resources.value"
             :loading="svnService.loading.value" :testConnection="handleSVNTestConnection"
@@ -214,7 +201,8 @@ onBeforeUnmount(() => {
             @updateTask="handleUpdateTask" @deleteTask="handleDeleteTask" @createTemplate="handleCreateTemplate"
             @deleteTemplate="handleDeleteTemplate" @modalClose="globalAutoOpenTaskModal = false" @viewLogs="handleViewLogs" />
 
-          <LogViewer v-else-if="activeTab === 'logs'" :runs="runs" :selectedTaskId="selectedLogTaskId" />
+          <LogViewer v-else-if="activeTab === 'logs'" :runs="runs" :selectedTaskId="selectedLogTaskId"
+            @deleteRun="handleDeleteRun" @deleteRunsByTask="handleDeleteRunsByTask" />
         </main>
 
         <!-- Status Footer -->

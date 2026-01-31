@@ -8,7 +8,13 @@ const props = defineProps<{
     selectedTaskId?: string | null;
 }>();
 
+const emit = defineEmits<{
+    (e: 'deleteRun', runId: string): void;
+    (e: 'deleteRunsByTask', taskId: string): void;
+}>();
+
 const selectedRun = ref<TaskRun | null>(props.runs[0] || null);
+const searchTerm = ref('');
 
 watch(() => props.runs, (newRuns) => {
     if (props.selectedTaskId) {
@@ -37,6 +43,25 @@ watch(() => props.selectedTaskId, (taskId) => {
     const run = props.runs.find(r => r.taskId === taskId);
     if (run) selectedRun.value = run;
 });
+
+const filteredRuns = computed(() => {
+    const keyword = searchTerm.value.trim().toLowerCase();
+    const list = keyword
+        ? props.runs.filter(r =>
+            r.taskName.toLowerCase().includes(keyword) ||
+            r.taskId.toLowerCase().includes(keyword) ||
+            r.startedAt.toLowerCase().includes(keyword) ||
+            (r.finishedAt || '').toLowerCase().includes(keyword)
+        )
+        : props.runs;
+    return [...list].sort((a, b) => {
+        const at = parseRunTime(a.startedAt)?.getTime() ?? 0;
+        const bt = parseRunTime(b.startedAt)?.getTime() ?? 0;
+        return bt - at;
+    }).slice(0, 50);
+});
+
+const totalRuns = computed(() => props.runs.length);
 
 const parseRunTime = (value?: string) => {
     if (!value) return null;
@@ -70,12 +95,31 @@ const durationText = computed(() => {
 <template>
     <div class="h-full flex flex-col space-y-3">
         <!-- Task Selector Tabs -->
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex-1 min-w-0 flex items-center space-x-2">
+                <div class="relative flex-1 min-w-[220px]">
+                    <input v-model="searchTerm" placeholder="搜索任务名 / 任务ID / 时间"
+                        class="w-full bg-white border border-slate-200 rounded-full px-3 py-1.5 text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <span class="text-[10px] text-slate-400 whitespace-nowrap">共 {{ totalRuns }} 条，显示最近 {{ filteredRuns.length }} 条</span>
+            </div>
+            <div class="flex items-center space-x-2 shrink-0">
+                <button v-if="selectedRun" class="text-rose-500 text-xs font-bold hover:underline"
+                    @click="emit('deleteRun', selectedRun.id)">删除本条</button>
+                <button v-if="selectedRun" class="text-slate-500 text-xs font-bold hover:underline"
+                    @click="emit('deleteRunsByTask', selectedRun.taskId)">清空该任务</button>
+            </div>
+        </div>
+
         <div class="flex space-x-2 overflow-x-auto pb-2 shrink-0">
-            <button v-for="run in runs" :key="run.id" @click="selectedRun = run" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border',
+            <button v-for="run in filteredRuns" :key="run.id" @click="selectedRun = run" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border flex items-center space-x-2',
                 selectedRun?.id === run.id
                     ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                     : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50']">
-                {{ run.taskName }} · {{ run.startedAt }}
+                <span>{{ run.taskName }} · {{ run.startedAt }}</span>
+                <button class="text-white/80 hover:text-white" title="删除此条" @click.stop="emit('deleteRun', run.id)">
+                    <i class="fa-solid fa-xmark text-[9px]"></i>
+                </button>
             </button>
         </div>
 

@@ -20,7 +20,7 @@ const title = computed(() => {
 </script>
 
 <template>
-  <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
+  <header class="h-14 bg-white border-b border-t border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
     <div class="flex items-center space-x-3">
       <h1 class="text-base font-bold text-slate-800 tracking-tight">{{ title }}</h1>
       <span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded border border-blue-100 uppercase">本地实例</span>
