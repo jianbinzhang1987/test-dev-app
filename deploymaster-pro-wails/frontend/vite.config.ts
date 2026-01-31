@@ -6,5 +6,9 @@ export default defineConfig({
   plugins: [vue()],
   define: {
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
+  },
+  server: {
+    host: '127.0.0.1',
+    port: 5173
   }
 })

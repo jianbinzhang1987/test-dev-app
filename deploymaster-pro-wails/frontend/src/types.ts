@@ -15,7 +15,16 @@ export interface RemoteServer {
   port: number;
   protocol: 'SFTP' | 'FTP' | 'SCP';
   isMaster: boolean;
-  latency?: number; // 延迟(ms)
+
+  // 认证相关字段
+  username?: string;           // SSH用户名
+  authMethod?: 'password' | 'key' | 'agent';  // 认证方式
+  keyPath?: string;            // SSH私钥路径（仅key模式）
+
+  // 运行时状态
+  latency?: number; // 延迟(ms) - 兼容字段
+  delay?: number;   // 延迟(ms) - UI显示字段
+  status?: 'connected' | 'disconnected' | 'testing';
   lastChecked?: string; // 最后检测时间
 }
 

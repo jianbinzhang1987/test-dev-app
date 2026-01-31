@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import Header from './components/Header.vue';
 import Dashboard from './pages/Dashboard.vue';
@@ -8,22 +8,27 @@ import ServerManager from './pages/ServerManager.vue';
 import TaskExecutor from './pages/TaskExecutor.vue';
 import LogViewer from './pages/LogViewer.vue';
 import { RemoteServer, SVNResource, DeploymentTask, TaskStatus } from './types';
+import { useNodeService } from './composables/useNodeService';
 
 // Global State
 const activeTab = ref('dashboard');
 const globalAutoOpenTaskModal = ref(false);
 
-const servers = ref<RemoteServer[]>([
-  { id: 'srv-1', name: '香港分发主控', ip: '43.154.21.90', port: 22, protocol: 'SFTP', isMaster: true, latency: 24, lastChecked: '10:45:00' },
-  { id: 'srv-2', name: '内河-01 节点', ip: '10.0.4.12', port: 22, protocol: 'SFTP', isMaster: false, latency: 12, lastChecked: '10:45:00' },
-  { id: 'srv-3', name: '内河-02 节点', ip: '10.0.4.15', port: 22, protocol: 'SFTP', isMaster: false, latency: 15, lastChecked: '10:45:00' }
-]);
+// 使用真实的节点服务
+const nodeService = useNodeService();
 
+// 在组件挂载时加载节点数据
+onMounted(async () => {
+  await nodeService.loadNodes();
+});
+
+// SVN资源仍使用模拟数据（将在后续实现）
 const resources = ref<SVNResource[]>([
   { id: 'res-1', name: '核心支付网关', url: 'svn://192.168.1.100/pay/trunk', revision: '8902', lastChecked: '2024-03-24 10:20:12', status: 'ready' as any, type: 'folder' },
   { id: 'res-2', name: '静态资源加速包', url: 'svn://192.168.1.100/cdn/assets', revision: '4521', lastChecked: '2024-03-23 15:44:02', status: 'ready' as any, type: 'folder' }
 ]);
 
+// 任务仍使用模拟数据（将在后续实现）
 const tasks = ref<DeploymentTask[]>([
   {
     id: 'task-1',
@@ -52,12 +57,30 @@ const handleUpdateResource = (res: SVNResource) => {
 };
 const handleDeleteResource = (id: string) => resources.value = resources.value.filter(r => r.id !== id);
 
-const handleAddServer = (srv: RemoteServer) => servers.value.push(srv);
-const handleUpdateServer = (srv: RemoteServer) => {
-  const idx = servers.value.findIndex(s => s.id === srv.id);
-  if (idx !== -1) servers.value[idx] = srv;
+// 节点管理处理器 - 现在使用真实API
+const handleAddServer = async (srv: RemoteServer) => {
+  try {
+    await nodeService.addNode(srv);
+  } catch (err) {
+    console.error('添加服务器失败:', err);
+  }
 };
-const handleDeleteServer = (id: string) => servers.value = servers.value.filter(s => s.id !== id);
+
+const handleUpdateServer = async (srv: RemoteServer) => {
+  try {
+    await nodeService.updateNode(srv);
+  } catch (err) {
+    console.error('更新服务器失败:', err);
+  }
+};
+
+const handleDeleteServer = async (id: string) => {
+  try {
+    await nodeService.deleteNode(id);
+  } catch (err) {
+    console.error('删除服务器失败:', err);
+  }
+};
 
 const handleAddTask = (task: DeploymentTask) => tasks.value.unshift(task);
 const handleUpdateTask = (task: DeploymentTask) => {
@@ -100,17 +123,18 @@ const handleUpdateTask = (task: DeploymentTask) => {
 
         <!-- Main Content Area -->
         <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
-          <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="servers" />
+          <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" />
 
           <SVNManager v-else-if="activeTab === 'svn'" :resources="resources" @add="handleAddResource"
             @update="handleUpdateResource" @delete="handleDeleteResource" />
 
-          <ServerManager v-else-if="activeTab === 'servers'" :servers="servers" @add="handleAddServer"
-            @update="handleUpdateServer" @delete="handleDeleteServer" />
+          <ServerManager v-else-if="activeTab === 'servers'" :servers="nodeService.servers.value"
+            :loading="nodeService.loading.value" @update-list="nodeService.loadNodes" @delete="handleDeleteServer"
+            @test="nodeService.testConnection" />
 
-          <TaskExecutor v-else-if="activeTab === 'tasks'" :tasks="tasks" :servers="servers" :resources="resources"
-            :autoOpenModal="globalAutoOpenTaskModal" @addTask="handleAddTask" @updateTask="handleUpdateTask"
-            @modalClose="globalAutoOpenTaskModal = false" />
+          <TaskExecutor v-else-if="activeTab === 'tasks'" :tasks="tasks" :servers="nodeService.servers.value"
+            :resources="resources" :autoOpenModal="globalAutoOpenTaskModal" @addTask="handleAddTask"
+            @updateTask="handleUpdateTask" @modalClose="globalAutoOpenTaskModal = false" />
 
           <LogViewer v-else-if="activeTab === 'logs'" :tasks="tasks" />
         </main>
