@@ -17,6 +17,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 const activeTab = ref('dashboard');
 const selectedLogTaskId = ref<string | null>(null);
 const globalAutoOpenTaskModal = ref(false);
+const isWindowed = ref(false);
 
 // 使用真实的节点服务
 const nodeService = useNodeService();
@@ -30,6 +31,17 @@ onMounted(async () => {
   await taskService.loadTasks();
   await taskService.loadTemplates();
   await taskService.loadRuns();
+});
+
+const updateWindowedState = () => {
+  const screenW = window.screen?.availWidth || window.screen?.width || window.innerWidth;
+  const screenH = window.screen?.availHeight || window.screen?.height || window.innerHeight;
+  isWindowed.value = window.innerWidth < screenW - 20 || window.innerHeight < screenH - 80;
+};
+
+onMounted(() => {
+  updateWindowedState();
+  window.addEventListener('resize', updateWindowedState);
 });
 
 const tasks = taskService.tasks;
@@ -168,6 +180,7 @@ onBeforeUnmount(() => {
     unsubscribeTaskEvents();
     unsubscribeTaskEvents = null;
   }
+  window.removeEventListener('resize', updateWindowedState);
 });
 </script>
 
@@ -184,6 +197,7 @@ onBeforeUnmount(() => {
         <!-- Main Content Area -->
         <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
           <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" :runs="runs"
+            :windowed="isWindowed"
             @viewAllRuns="activeTab = 'logs'" />
 
           <SVNManager v-else-if="activeTab === 'svn'" :resources="svnService.resources.value"
@@ -197,7 +211,8 @@ onBeforeUnmount(() => {
 
           <TaskExecutor v-else-if="activeTab === 'tasks'" :tasks="tasks" :templates="templates"
             :servers="nodeService.servers.value" :resources="svnService.resources.value"
-            :autoOpenModal="globalAutoOpenTaskModal" @addTask="handleAddTask" @saveTask="handleSaveTask"
+            :autoOpenModal="globalAutoOpenTaskModal" :windowed="isWindowed" @addTask="handleAddTask"
+            @saveTask="handleSaveTask"
             @updateTask="handleUpdateTask" @deleteTask="handleDeleteTask" @createTemplate="handleCreateTemplate"
             @deleteTemplate="handleDeleteTemplate" @modalClose="globalAutoOpenTaskModal = false" @viewLogs="handleViewLogs" />
 

@@ -10,6 +10,7 @@ const props = defineProps<{
     resources: SVNResource[];
     templates: TaskTemplate[];
     autoOpenModal?: boolean;
+    windowed?: boolean;
 }>();
 
 const emit = defineEmits(['addTask', 'saveTask', 'updateTask', 'deleteTask', 'createTemplate', 'deleteTemplate', 'modalClose', 'viewLogs']);
@@ -44,6 +45,7 @@ watch(() => props.autoOpenModal, (newVal) => {
 
 const masters = computed(() => props.servers.filter(s => s.isMaster));
 const slaves = computed(() => props.servers.filter(s => !s.isMaster));
+const isWindowed = computed(() => Boolean(props.windowed));
 
 const handleCreateTask = () => {
     if (!formData.value.name || !formData.value.remotePath || !formData.value.masterServerId) {
@@ -194,7 +196,8 @@ const handleEditTask = (task: DeploymentTask) => {
 <template>
     <div class="space-y-6 pb-10">
         <!-- Banner -->
-        <div class="bg-slate-900 rounded-3xl p-10 text-white relative overflow-hidden border border-white/5 shadow-2xl">
+        <div :class="['bg-slate-900 rounded-3xl text-white relative overflow-hidden border border-white/5 shadow-2xl',
+            isWindowed ? 'p-6' : 'p-10']">
             <div class="relative z-10 max-w-2xl">
                 <div class="flex items-center space-x-4 mb-6">
                     <div
@@ -214,7 +217,7 @@ const handleEditTask = (task: DeploymentTask) => {
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     <span>主控机同步从机使用用户名+密码方式，请确保从机密码已保存。</span>
                 </p>
-                <div class="flex space-x-4">
+                <div :class="['flex', isWindowed ? 'flex-wrap gap-3' : 'space-x-4']">
                     <button @click="isCreateModalOpen = true"
                         class="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-xs shadow-xl hover:bg-blue-500 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center space-x-3">
                         <i class="fa-solid fa-plus-circle"></i>
@@ -262,7 +265,8 @@ const handleEditTask = (task: DeploymentTask) => {
                 </div>
             </div>
             <div v-for="task in tasks" :key="task.id"
-                class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all group flex items-center space-x-8">
+                :class="['bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all group',
+                    isWindowed ? 'flex flex-col items-start space-y-4' : 'flex items-center space-x-8']">
                 <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0 shadow-inner border-2 transition-all',
                     task.status === TaskStatus.SUCCESS ? 'bg-emerald-50 border-emerald-100 text-emerald-500' :
                         task.status === TaskStatus.IDLE ? 'bg-slate-50 border-slate-100 text-slate-300' :
@@ -297,7 +301,7 @@ const handleEditTask = (task: DeploymentTask) => {
                     </div>
                 </div>
 
-                <div class="w-64 shrink-0 px-4">
+                <div :class="[isWindowed ? 'w-full' : 'w-64 shrink-0 px-4']">
                     <div class="flex justify-between mb-2 items-end">
                         <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">总体进度</span>
                         <span class="text-xs font-mono font-black text-slate-800">{{ task.progress }}%</span>
@@ -309,7 +313,7 @@ const handleEditTask = (task: DeploymentTask) => {
                     </div>
                 </div>
 
-                <div class="flex items-center space-x-3 shrink-0">
+                <div :class="['flex items-center shrink-0', isWindowed ? 'flex-wrap gap-3' : 'space-x-3']">
                     <button @click="emit('viewLogs', task.id)"
                         class="w-11 h-11 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm"
                         title="查看运行日志">

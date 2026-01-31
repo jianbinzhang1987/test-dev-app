@@ -112,15 +112,18 @@ const durationText = computed(() => {
         </div>
 
         <div class="flex space-x-2 overflow-x-auto pb-2 shrink-0">
-            <button v-for="run in filteredRuns" :key="run.id" @click="selectedRun = run" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border flex items-center space-x-2',
-                selectedRun?.id === run.id
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50']">
-                <span>{{ run.taskName }} · {{ run.startedAt }}</span>
-                <button class="text-white/80 hover:text-white" title="删除此条" @click.stop="emit('deleteRun', run.id)">
+            <div v-for="run in filteredRuns" :key="run.id" class="relative">
+                <button @click="selectedRun = run" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border flex items-center space-x-2 pr-6',
+                    selectedRun?.id === run.id
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50']">
+                    <span>{{ run.taskName }} · {{ run.startedAt }}</span>
+                </button>
+                <button class="absolute right-1.5 top-1/2 -translate-y-1/2 text-white/80 hover:text-white"
+                    title="删除此条" @click.stop="emit('deleteRun', run.id)">
                     <i class="fa-solid fa-xmark text-[9px]"></i>
                 </button>
-            </button>
+            </div>
         </div>
 
         <!-- Terminal Container -->

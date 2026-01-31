@@ -6,6 +6,7 @@ const props = defineProps<{
   tasks: DeploymentTask[];
   servers: RemoteServer[];
   runs: TaskRun[];
+  windowed?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -66,6 +67,8 @@ const stats = computed(() => [
   { label: '最后同步时间', value: formatRelativeTime(latestRunTime.value), icon: 'fa-history', color: 'bg-orange-500' },
 ]);
 
+const isWindowed = computed(() => Boolean(props.windowed));
+
 const recentRuns = computed(() => {
   const sorted = [...props.runs].sort((a, b) => {
     const aTime = parseTime(a.startedAt) ?? 0;
@@ -120,8 +123,8 @@ const suggestion = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col">
+    <div :class="['grid gap-6', isWindowed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3']">
+      <div :class="['bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col', isWindowed ? '' : 'lg:col-span-2']">
         <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
           <h3 class="text-sm font-bold text-slate-700">最近执行历史</h3>
           <button class="text-blue-600 text-xs font-bold hover:underline" @click="emit('viewAllRuns')">查看全部</button>
@@ -165,7 +168,7 @@ const suggestion = computed(() => {
         </div>
       </div>
 
-      <div class="bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col">
+      <div :class="['bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col', isWindowed ? 'order-last' : '']">
         <div class="px-5 py-3 border-b border-slate-100">
           <h3 class="text-sm font-bold text-slate-700">资源占用监控</h3>
         </div>
