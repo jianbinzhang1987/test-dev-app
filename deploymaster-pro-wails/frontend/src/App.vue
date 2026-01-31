@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
         <Header :activeTab="activeTab" @newDeployment="handleGlobalNewDeployment" />
 
         <!-- Main Content Area -->
-        <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
+        <main :class="['flex-1 overflow-y-auto scroll-smooth', isWindowed ? 'p-4' : 'p-6']">
           <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" :runs="runs"
             :windowed="isWindowed"
             @viewAllRuns="activeTab = 'logs'" />
