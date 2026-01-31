@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import Header from './components/Header.vue';
 import Dashboard from './pages/Dashboard.vue';
@@ -7,42 +7,34 @@ import SVNManager from './pages/SVNManager.vue';
 import ServerManager from './pages/ServerManager.vue';
 import TaskExecutor from './pages/TaskExecutor.vue';
 import LogViewer from './pages/LogViewer.vue';
-import { RemoteServer, SVNResource, DeploymentTask, TaskStatus } from './types';
+import { RemoteServer, SVNResource, DeploymentTask, TaskStatus, TaskRun, TaskTemplate } from './types';
 import { useNodeService } from './composables/useNodeService';
+import { useSvnService } from './composables/useSvnService';
+import { useTaskService } from './composables/useTaskService';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // Global State
 const activeTab = ref('dashboard');
+const selectedLogTaskId = ref<string | null>(null);
 const globalAutoOpenTaskModal = ref(false);
 
 // 使用真实的节点服务
 const nodeService = useNodeService();
+const svnService = useSvnService();
+const taskService = useTaskService();
 
 // 在组件挂载时加载节点数据
 onMounted(async () => {
   await nodeService.loadNodes();
+  await svnService.loadResources();
+  await taskService.loadTasks();
+  await taskService.loadTemplates();
+  await taskService.loadRuns();
 });
 
-// SVN资源仍使用模拟数据（将在后续实现）
-const resources = ref<SVNResource[]>([
-  { id: 'res-1', name: '核心支付网关', url: 'svn://192.168.1.100/pay/trunk', revision: '8902', lastChecked: '2024-03-24 10:20:12', status: 'ready' as any, type: 'folder' },
-  { id: 'res-2', name: '静态资源加速包', url: 'svn://192.168.1.100/cdn/assets', revision: '4521', lastChecked: '2024-03-23 15:44:02', status: 'ready' as any, type: 'folder' }
-]);
-
-// 任务仍使用模拟数据（将在后续实现）
-const tasks = ref<DeploymentTask[]>([
-  {
-    id: 'task-1',
-    name: '支付网关-例行更新-v2.1',
-    svnResourceId: 'res-1',
-    masterServerId: 'srv-1',
-    slaveServerIds: ['srv-2', 'srv-3'],
-    remotePath: '/var/www/pay',
-    commands: ['npm install', 'npm run build', 'pm2 restart all'],
-    status: TaskStatus.SUCCESS,
-    progress: 100,
-    logs: ['[系统] 任务已完成']
-  }
-]);
+const tasks = taskService.tasks;
+const templates = taskService.templates;
+const runs = taskService.runs;
 
 // Handlers
 const handleGlobalNewDeployment = () => {
@@ -50,12 +42,29 @@ const handleGlobalNewDeployment = () => {
   globalAutoOpenTaskModal.value = true;
 };
 
-const handleAddResource = (res: SVNResource) => resources.value.push(res);
-const handleUpdateResource = (res: SVNResource) => {
-  const idx = resources.value.findIndex(r => r.id === res.id);
-  if (idx !== -1) resources.value[idx] = res;
+const handleAddResource = async (
+  res: SVNResource,
+  creds?: { username?: string; password?: string; remember?: boolean }
+) => {
+  await svnService.addResource(res, creds);
 };
-const handleDeleteResource = (id: string) => resources.value = resources.value.filter(r => r.id !== id);
+const handleUpdateResource = async (
+  res: SVNResource,
+  creds?: { username?: string; password?: string; remember?: boolean }
+) => {
+  await svnService.updateResource(res, creds);
+};
+const handleDeleteResource = async (id: string) => {
+  await svnService.deleteResource(id);
+};
+
+const handleSVNTestConnection = async (payload: { url: string; username: string; password: string; resourceId?: string }) => {
+  return svnService.testConnection(payload.url, payload.username, payload.password, payload.resourceId || '');
+};
+
+const handleSVNRefreshAll = async () => {
+  await svnService.refreshAll();
+};
 
 // 节点管理处理器 - 现在使用真实API
 const handleAddServer = async (srv: RemoteServer) => {
@@ -82,11 +91,76 @@ const handleDeleteServer = async (id: string) => {
   }
 };
 
-const handleAddTask = (task: DeploymentTask) => tasks.value.unshift(task);
+const handleAddTask = async (task: Partial<DeploymentTask>) => {
+  await taskService.addTask(task);
+};
+const handleSaveTask = async (task: Partial<DeploymentTask>) => {
+  await taskService.updateTask({ ...task, progress: -1 });
+};
 const handleUpdateTask = (task: DeploymentTask) => {
   const idx = tasks.value.findIndex(t => t.id === task.id);
   if (idx !== -1) tasks.value[idx] = task;
 };
+const handleDeleteTask = async (taskId: string) => {
+  await taskService.deleteTask(taskId);
+};
+
+const handleCreateTemplate = async (tpl: Partial<TaskTemplate>) => {
+  await taskService.addTemplate(tpl);
+};
+
+const handleDeleteTemplate = async (templateId: string) => {
+  await taskService.deleteTemplate(templateId);
+};
+
+const handleViewLogs = (taskId: string) => {
+  selectedLogTaskId.value = taskId;
+  activeTab.value = 'logs';
+};
+
+let unsubscribeTaskEvents: (() => void) | null = null;
+onMounted(() => {
+  unsubscribeTaskEvents = EventsOn('task:event', (event: any) => {
+    const task = tasks.value.find(t => t.id === event.taskId);
+    if (task) {
+      handleUpdateTask({
+        ...task,
+        status: event.status,
+        progress: event.progress,
+      });
+    }
+
+    if (event.runId) {
+      const existing = runs.value.find(r => r.id === event.runId);
+      if (existing) {
+        existing.status = event.status;
+        existing.progress = event.progress;
+        existing.logs = [...(existing.logs || []), event.log];
+        if ((event.status === TaskStatus.SUCCESS || event.status === TaskStatus.FAILED) && !existing.finishedAt) {
+          existing.finishedAt = new Date().toLocaleString();
+        }
+      } else {
+        const run: TaskRun = {
+          id: event.runId,
+          taskId: event.taskId,
+          taskName: task?.name || '未知任务',
+          status: event.status,
+          progress: event.progress,
+          startedAt: new Date().toLocaleString(),
+          logs: [event.log],
+        };
+        runs.value.unshift(run);
+      }
+    }
+  });
+});
+
+onBeforeUnmount(() => {
+  if (unsubscribeTaskEvents) {
+    unsubscribeTaskEvents();
+    unsubscribeTaskEvents = null;
+  }
+});
 </script>
 
 <template>
@@ -125,18 +199,22 @@ const handleUpdateTask = (task: DeploymentTask) => {
         <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
           <Dashboard v-if="activeTab === 'dashboard'" :tasks="tasks" :servers="nodeService.servers.value" />
 
-          <SVNManager v-else-if="activeTab === 'svn'" :resources="resources" @add="handleAddResource"
-            @update="handleUpdateResource" @delete="handleDeleteResource" />
+          <SVNManager v-else-if="activeTab === 'svn'" :resources="svnService.resources.value"
+            :loading="svnService.loading.value" :testConnection="handleSVNTestConnection"
+            :refreshAll="handleSVNRefreshAll" @add="handleAddResource" @update="handleUpdateResource"
+            @delete="handleDeleteResource" />
 
           <ServerManager v-else-if="activeTab === 'servers'" :servers="nodeService.servers.value"
             :loading="nodeService.loading.value" @update-list="nodeService.loadNodes" @delete="handleDeleteServer"
             @test="nodeService.testConnection" />
 
-          <TaskExecutor v-else-if="activeTab === 'tasks'" :tasks="tasks" :servers="nodeService.servers.value"
-            :resources="resources" :autoOpenModal="globalAutoOpenTaskModal" @addTask="handleAddTask"
-            @updateTask="handleUpdateTask" @modalClose="globalAutoOpenTaskModal = false" />
+          <TaskExecutor v-else-if="activeTab === 'tasks'" :tasks="tasks" :templates="templates"
+            :servers="nodeService.servers.value" :resources="svnService.resources.value"
+            :autoOpenModal="globalAutoOpenTaskModal" @addTask="handleAddTask" @saveTask="handleSaveTask"
+            @updateTask="handleUpdateTask" @deleteTask="handleDeleteTask" @createTemplate="handleCreateTemplate"
+            @deleteTemplate="handleDeleteTemplate" @modalClose="globalAutoOpenTaskModal = false" @viewLogs="handleViewLogs" />
 
-          <LogViewer v-else-if="activeTab === 'logs'" :tasks="tasks" />
+          <LogViewer v-else-if="activeTab === 'logs'" :runs="runs" :selectedTaskId="selectedLogTaskId" />
         </main>
 
         <!-- Status Footer -->

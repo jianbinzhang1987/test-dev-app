@@ -4,15 +4,47 @@ import {internal} from '../models';
 
 export function AddNode(arg1:internal.Node):Promise<void>;
 
+export function AddSVNResource(arg1:internal.SVNResource):Promise<internal.SVNResource>;
+
+export function AddTask(arg1:internal.TaskDefinition):Promise<internal.TaskDefinition>;
+
+export function AddTaskTemplate(arg1:internal.TaskTemplate):Promise<internal.TaskTemplate>;
+
 export function BatchTestConnections(arg1:string,arg2:string):Promise<Record<string, internal.NodeStatus>>;
+
+export function CheckoutSVNResource(arg1:string,arg2:string):Promise<string>;
+
+export function ConfirmDialog(arg1:string,arg2:string):Promise<boolean>;
 
 export function DeleteCredential(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteNode(arg1:string):Promise<void>;
 
+export function DeleteSVNResource(arg1:string):Promise<void>;
+
+export function DeleteTask(arg1:string):Promise<void>;
+
+export function DeleteTaskRun(arg1:string):Promise<void>;
+
+export function DeleteTaskRunsByTask(arg1:string):Promise<void>;
+
+export function DeleteTaskTemplate(arg1:string):Promise<void>;
+
+export function ExecuteTask(arg1:internal.TaskRunRequest):Promise<void>;
+
 export function GetNode(arg1:string):Promise<internal.Node>;
 
 export function GetNodes():Promise<Array<internal.Node>>;
+
+export function GetSVNResources():Promise<Array<internal.SVNResource>>;
+
+export function GetTaskRuns():Promise<Array<internal.TaskRun>>;
+
+export function GetTaskRunsByTask(arg1:string):Promise<Array<internal.TaskRun>>;
+
+export function GetTaskTemplates():Promise<Array<internal.TaskTemplate>>;
+
+export function GetTasks():Promise<Array<internal.TaskDefinition>>;
 
 export function GetTopology():Promise<internal.TopologyData>;
 
@@ -22,14 +54,30 @@ export function HasStoredCredential(arg1:string,arg2:string):Promise<boolean>;
 
 export function HasStoredKeyPassphrase(arg1:string):Promise<boolean>;
 
+export function HasStoredSVNCredential(arg1:string,arg2:string):Promise<boolean>;
+
+export function RefreshSVNResource(arg1:string):Promise<internal.SVNResource>;
+
 export function SaveCredential(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
 
 export function SaveKeyPassphrase(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 
+export function SaveSVNCredential(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<void>;
+
 export function SelectKeyFile():Promise<string>;
+
+export function ShowMessageDialog(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function TestConnectionWithCredentials(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<internal.NodeStatus>;
 
 export function TestNodeConnection(arg1:string,arg2:string,arg3:string):Promise<internal.NodeStatus>;
 
+export function TestSVNConnection(arg1:string,arg2:string,arg3:string,arg4:string):Promise<internal.SVNTestResult>;
+
 export function UpdateNode(arg1:internal.Node):Promise<void>;
+
+export function UpdateSVNResource(arg1:internal.SVNResource):Promise<void>;
+
+export function UpdateTask(arg1:internal.TaskDefinition):Promise<void>;
+
+export function UpdateTaskTemplate(arg1:internal.TaskTemplate):Promise<void>;

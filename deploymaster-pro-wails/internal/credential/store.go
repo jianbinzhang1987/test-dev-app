@@ -14,8 +14,9 @@ const (
 	ServiceName = "deploymaster-pro"
 
 	// 凭据类型前缀
-	passwordPrefix   = "ssh-password"
-	passphrasePrefix = "ssh-key-passphrase"
+	passwordPrefix    = "ssh-password"
+	passphrasePrefix  = "ssh-key-passphrase"
+	svnPasswordPrefix = "svn-password"
 )
 
 // Credential 项
@@ -66,6 +67,27 @@ func (s *Store) GetPassword(nodeID, username string) (string, error) {
 // DeletePassword 删除SSH密码
 func (s *Store) DeletePassword(nodeID, username string) error {
 	account := fmt.Sprintf("%s-%s-%s", passwordPrefix, nodeID, username)
+	return s.delete(account)
+}
+
+// SetSVNPassword 存储 SVN 账号密码
+// resourceID: SVN 资源ID
+// username: SVN 用户名
+// password: SVN 密码
+func (s *Store) SetSVNPassword(resourceID, username, password string) error {
+	account := fmt.Sprintf("%s-%s-%s", svnPasswordPrefix, resourceID, username)
+	return s.set(account, password)
+}
+
+// GetSVNPassword 获取 SVN 密码
+func (s *Store) GetSVNPassword(resourceID, username string) (string, error) {
+	account := fmt.Sprintf("%s-%s-%s", svnPasswordPrefix, resourceID, username)
+	return s.get(account)
+}
+
+// DeleteSVNPassword 删除 SVN 密码
+func (s *Store) DeleteSVNPassword(resourceID, username string) error {
+	account := fmt.Sprintf("%s-%s-%s", svnPasswordPrefix, resourceID, username)
 	return s.delete(account)
 }
 
@@ -231,6 +253,12 @@ func (s *Store) DeleteAll(nodeID, username string) error {
 // HasPassword 检查是否存储了密码
 func (s *Store) HasPassword(nodeID, username string) bool {
 	_, err := s.GetPassword(nodeID, username)
+	return err == nil
+}
+
+// HasSVNPassword 检查是否存储了 SVN 密码
+func (s *Store) HasSVNPassword(resourceID, username string) bool {
+	_, err := s.GetSVNPassword(resourceID, username)
 	return err == nil
 }
 

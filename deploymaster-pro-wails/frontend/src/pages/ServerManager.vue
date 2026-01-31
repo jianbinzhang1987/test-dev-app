@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import type { RemoteServer } from '../types';
 import { useNodeService } from '../composables/useNodeService';
+import { ConfirmDialog, ShowMessageDialog } from '../../wailsjs/go/main/App';
 import CredentialDialog from '../components/CredentialDialog.vue';
 
 const props = defineProps<{
@@ -96,7 +97,7 @@ const handleSinglePing = async (server: RemoteServer) => {
             await nodeService.testConnection(server.id, server.username || 'root');
         } else {
             // 引导去配置，但使用轻量级提示而不是直接跳转
-            if (confirm(`未检测到节点 "${server.name}" 的存储凭据，是否立即前往配置？`)) {
+            if (await ConfirmDialog('配置凭据', `未检测到节点 "${server.name}" 的存储凭据，是否立即前往配置？`)) {
                 openEditModal(server);
             }
         }
@@ -107,7 +108,7 @@ const handleSinglePing = async (server: RemoteServer) => {
 
 const handleDelete = async (id: string) => {
     if (!id) return;
-    const ok = confirm('确定要移除此节点吗？相关凭据也将被清理。');
+    const ok = await ConfirmDialog('确认删除', '确定要移除此节点吗？相关凭据也将被清理。');
     if (!ok) return;
 
     try {
@@ -117,7 +118,7 @@ const handleDelete = async (id: string) => {
         emit('update-list');
     } catch (err) {
         console.error('[ServerManager] delete failed', err);
-        alert('删除失败，请查看控制台日志');
+        await ShowMessageDialog('删除失败', '删除失败，请查看控制台日志', 'error');
     }
 };
 </script>

@@ -37,6 +37,15 @@ export interface SVNResource {
   status: 'online' | 'error' | 'syncing';
   lastChecked: string;
   size?: string;
+  username?: string;
+}
+
+export interface SVNTestResult {
+  ok: boolean;
+  revision?: string;
+  message?: string;
+  durationMs?: number;
+  checkedAt?: string;
 }
 
 export interface DeploymentTask {
@@ -46,8 +55,39 @@ export interface DeploymentTask {
   masterServerId: string;
   slaveServerIds: string[];
   remotePath: string;
+  slaveRemotePath?: string;
+  slaveRemotePaths?: Record<string, string>;
   commands: string[];
   status: TaskStatus;
   progress: number;
+  createdAt?: string;
+  updatedAt?: string;
+  lastRunAt?: string;
+  templateId?: string;
+}
+
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  svnResourceId: string;
+  masterServerId: string;
+  slaveServerIds: string[];
+  remotePath: string;
+  slaveRemotePath?: string;
+  slaveRemotePaths?: Record<string, string>;
+  commands: string[];
+  sourceTaskId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TaskRun {
+  id: string;
+  taskId: string;
+  taskName: string;
+  status: TaskStatus;
+  progress: number;
+  startedAt: string;
+  finishedAt?: string;
   logs: string[];
 }

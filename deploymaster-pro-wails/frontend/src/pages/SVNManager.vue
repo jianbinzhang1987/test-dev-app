@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { SVNResource } from '../types';
+import { ref, computed, watch } from 'vue';
+import { HasStoredSVNCredential, ShowMessageDialog } from '../../wailsjs/go/main/App';
+import { SVNResource, SVNTestResult } from '../types';
 
 const props = defineProps<{
   resources: SVNResource[];
+  loading?: boolean;
+  testConnection?: (payload: { url: string; username: string; password: string; resourceId?: string }) => Promise<SVNTestResult>;
+  refreshAll?: () => Promise<void>;
 }>();
 
 const emit = defineEmits(['add', 'update', 'delete']);
@@ -13,39 +17,142 @@ const isModalOpen = ref(false);
 const modalMode = ref<'add' | 'edit'>('add');
 const currentRes = ref<Partial<SVNResource>>({});
 const isTesting = ref(false);
+const credential = ref({ username: '', password: '', remember: true });
+const showPasswordMask = ref(false);
 
 const openAddModal = () => {
   modalMode.value = 'add';
   currentRes.value = { type: 'file', status: 'online', revision: 'HEAD' };
+  credential.value = { username: '', password: '', remember: true };
+  showPasswordMask.value = false;
   isModalOpen.value = true;
 };
 
 const openEditModal = (res: SVNResource) => {
   modalMode.value = 'edit';
   currentRes.value = { ...res };
+  credential.value = { username: res.username || '', password: '', remember: true };
+  showPasswordMask.value = !!savedCredentialMap.value[res.id];
   isModalOpen.value = true;
 };
 
 const handleSubmit = () => {
+  if (credential.value.remember && credential.value.password && !credential.value.username) {
+    ShowMessageDialog('缺少用户名', '请先填写 SVN 用户名后再保存密码。', 'warning');
+    return;
+  }
+
   if (modalMode.value === 'add') {
     const newRes = {
       ...currentRes.value,
-      id: 's' + (props.resources.length + 1),
       lastChecked: new Date().toLocaleString().slice(0, 16),
+      username: credential.value.username || '',
     } as SVNResource;
-    emit('add', newRes);
+    emit('add', newRes, { ...credential.value });
   } else {
-    emit('update', currentRes.value as SVNResource);
+    emit('update', { ...currentRes.value, username: credential.value.username || '' } as SVNResource, { ...credential.value });
   }
   isModalOpen.value = false;
 };
 
-const handleTestConnection = () => {
+const handleTestConnection = async () => {
+  if (!currentRes.value.url) {
+    await ShowMessageDialog('缺少 URL', '请先输入 SVN 仓库 URL。', 'warning');
+    return;
+  }
+  if (!props.testConnection) {
+    await ShowMessageDialog('后端未就绪', 'SVN 后端未就绪，无法测试连接。', 'error');
+    return;
+  }
+
   isTesting.value = true;
-  setTimeout(() => {
+  try {
+    const result = await props.testConnection({
+      url: currentRes.value.url,
+      username: credential.value.username || '',
+      password: credential.value.password || '',
+      resourceId: currentRes.value.id || '',
+    });
+    currentRes.value.status = result.ok ? 'online' : 'error';
+    if (result.revision) {
+      currentRes.value.revision = result.revision;
+    }
+    currentRes.value.lastChecked = new Date().toLocaleString().slice(0, 16);
+    await ShowMessageDialog(
+      result.ok ? '连接成功' : '连接失败',
+      result.ok ? '连接测试成功！SVN 仓库响应正常。' : `连接失败：${result.message || '未知错误'}`,
+      result.ok ? 'info' : 'error'
+    );
+  } catch (err: any) {
+    await ShowMessageDialog('连接失败', `${err.message || err}`, 'error');
+  } finally {
     isTesting.value = false;
-    alert('连接测试成功！SVN 仓库响应正常。');
-  }, 1500);
+  }
+};
+
+const handleRefreshAll = async () => {
+  if (!props.refreshAll) return;
+  await props.refreshAll();
+};
+
+const savedCredentialMap = ref<Record<string, boolean>>({});
+
+const refreshCredentialStatus = async () => {
+  const entries = await Promise.all(
+    props.resources.map(async (res) => {
+      if (!res.id || !res.username) return [res.id, false] as const;
+      const has = await HasStoredSVNCredential(res.id, res.username);
+      return [res.id, has] as const;
+    })
+  );
+  const map: Record<string, boolean> = {};
+  for (const [id, has] of entries) {
+    if (id) map[id] = has;
+  }
+  savedCredentialMap.value = map;
+};
+
+watch(
+  () => props.resources.map(r => `${r.id}:${r.username || ''}`),
+  () => {
+    refreshCredentialStatus();
+  },
+  { immediate: true }
+);
+
+watch(
+  () => credential.value.username,
+  (val) => {
+    currentRes.value.username = val || '';
+  }
+);
+
+watch(
+  () => currentRes.value.id,
+  (id) => {
+    if (!id) {
+      showPasswordMask.value = false;
+      return;
+    }
+    if (credential.value.password) {
+      showPasswordMask.value = false;
+      return;
+    }
+    showPasswordMask.value = !!savedCredentialMap.value[id];
+  }
+);
+
+const passwordDisplay = computed(() => {
+  if (showPasswordMask.value && !credential.value.password) {
+    return '********';
+  }
+  return credential.value.password;
+});
+
+const handlePasswordInput = (evt: Event) => {
+  const target = evt.target as HTMLInputElement;
+  credential.value.password = target.value;
+  showPasswordMask.value = false;
 };
 
 const getStatusClass = (status: string) => {
@@ -109,7 +216,7 @@ const getStatusText = (status: string) => {
       <div class="relative w-96">
         <input 
           type="text" 
-          placeholder="输入名称、修订号或 URL 进行筛选..." 
+          placeholder="输入名称或 URL 进行筛选..." 
           class="w-full pl-9 pr-4 py-1.5 border border-slate-200 rounded text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
         />
         <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
@@ -132,7 +239,7 @@ const getStatusText = (status: string) => {
           </button>
         </div>
         <div class="h-6 w-[1px] bg-slate-100"></div>
-        <button class="text-slate-500 hover:text-blue-600 p-1 transition-colors" title="强制刷新全库">
+        <button @click="handleRefreshAll" :disabled="props.loading" class="text-slate-500 hover:text-blue-600 p-1 transition-colors disabled:opacity-40" title="强制刷新全库">
           <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
@@ -151,6 +258,9 @@ const getStatusText = (status: string) => {
               <span :class="['flex items-center space-x-1 text-[10px] font-bold px-1.5 py-0.5 rounded border', getStatusClass(res.status)]">
                 <i :class="['fa-solid', res.status === 'error' ? 'fa-exclamation-triangle' : (res.status === 'syncing' ? 'fa-sync fa-spin' : 'fa-check-circle'), 'scale-75']"></i>
                 <span>{{ getStatusText(res.status) }}</span>
+              </span>
+              <span v-if="savedCredentialMap[res.id]" class="text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-100 bg-emerald-50 text-emerald-600">
+                已保存密码
               </span>
               <span class="text-[9px] font-mono text-slate-400">ID: {{ res.id }}</span>
             </div>
@@ -215,6 +325,7 @@ const getStatusText = (status: string) => {
             <th class="px-6 py-3">SVN URL</th>
             <th class="px-6 py-3">修订号</th>
             <th class="px-6 py-3">检查状态</th>
+            <th class="px-6 py-3">凭据</th>
             <th class="px-6 py-3 text-right">操作</th>
           </tr>
         </thead>
@@ -234,6 +345,14 @@ const getStatusText = (status: string) => {
               <span :class="['flex items-center space-x-1 text-[10px] font-bold px-1.5 py-0.5 rounded border inline-flex', getStatusClass(res.status)]">
                 <i :class="['fa-solid', res.status === 'error' ? 'fa-exclamation-triangle' : (res.status === 'syncing' ? 'fa-sync fa-spin' : 'fa-check-circle'), 'scale-75']"></i>
                 <span>{{ getStatusText(res.status) }}</span>
+              </span>
+            </td>
+            <td class="px-6 py-4">
+              <span v-if="savedCredentialMap[res.id]" class="text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-100 bg-emerald-50 text-emerald-600">
+                已保存
+              </span>
+              <span v-else class="text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200 text-slate-400">
+                未保存
               </span>
             </td>
             <td class="px-6 py-4 text-right">
@@ -292,7 +411,7 @@ const getStatusText = (status: string) => {
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4">
               <div class="space-y-1">
                 <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">资源类型</label>
                 <select 
@@ -303,15 +422,6 @@ const getStatusText = (status: string) => {
                   <option value="folder">源码目录 (Folder)</option>
                 </select>
               </div>
-              <div class="space-y-1">
-                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">修订号锁定</label>
-                <input 
-                  type="text" 
-                  v-model="currentRes.revision"
-                  class="w-full px-3 py-2 border border-slate-200 rounded text-xs font-mono focus:border-blue-500 outline-none" 
-                  placeholder="HEAD / Revision #"
-                />
-              </div>
             </div>
 
             <div class="p-4 bg-slate-50 rounded border border-slate-100">
@@ -319,12 +429,16 @@ const getStatusText = (status: string) => {
               <div class="space-y-2 mt-2">
                  <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-user text-slate-300 text-[10px]"></i>
-                    <input type="text" placeholder="SVN 用户名" class="flex-1 bg-transparent border-none p-0 text-xs focus:ring-0 outline-none placeholder:text-slate-300" />
+                    <input v-model="credential.username" type="text" placeholder="SVN 用户名" class="flex-1 bg-transparent border-none p-0 text-xs focus:ring-0 outline-none placeholder:text-slate-300" />
                  </div>
                  <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-lock text-slate-300 text-[10px]"></i>
-                    <input type="password" placeholder="••••••••" class="flex-1 bg-transparent border-none p-0 text-xs focus:ring-0 outline-none placeholder:text-slate-300" />
+                    <input :value="passwordDisplay" @input="handlePasswordInput" type="password" placeholder="••••••••" class="flex-1 bg-transparent border-none p-0 text-xs focus:ring-0 outline-none placeholder:text-slate-300" />
                  </div>
+                 <label class="flex items-center space-x-2 text-[10px] text-slate-400 pt-1">
+                   <input v-model="credential.remember" type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                   <span>记住密码（本地加密保存）</span>
+                 </label>
               </div>
             </div>
 
@@ -354,9 +468,9 @@ const getStatusText = (status: string) => {
         <i class="fa-solid fa-circle-info"></i>
       </div>
       <div class="space-y-1">
-        <h5 class="text-xs font-black text-slate-700 uppercase">关于修订号 (Revision) 锁定</h5>
+        <h5 class="text-xs font-black text-slate-700 uppercase">关于修订号 (Revision)</h5>
         <p class="text-[10px] text-slate-500 leading-relaxed">
-          为了确保部署的幂等性，系统默认使用 SVN 路径对应的最后一次修订号。在“任务编排”中，您可以手动覆盖此修订号以部署历史版本。
+          系统默认拉取 SVN 路径对应的最新内容（HEAD）。
           若资源状态显示为“鉴权失败”，请前往<span class="text-blue-600 font-bold cursor-pointer">系统设置 - 凭据管理</span>更新 SVN 账号信息。
         </p>
       </div>

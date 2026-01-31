@@ -1,18 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { DeploymentTask, RemoteServer, SVNResource, TaskStatus } from '../types';
+import { ExecuteTask, HasStoredCredential, ShowMessageDialog, ConfirmDialog } from '../../wailsjs/go/main/App';
+import { internal } from '../../wailsjs/go/models';
+import { DeploymentTask, RemoteServer, SVNResource, TaskStatus, TaskTemplate } from '../types';
 
 const props = defineProps<{
     tasks: DeploymentTask[];
     servers: RemoteServer[];
     resources: SVNResource[];
+    templates: TaskTemplate[];
     autoOpenModal?: boolean;
 }>();
 
-const emit = defineEmits(['addTask', 'updateTask', 'modalClose']);
+const emit = defineEmits(['addTask', 'saveTask', 'updateTask', 'deleteTask', 'createTemplate', 'deleteTemplate', 'modalClose', 'viewLogs']);
 
 const isCreateModalOpen = ref(false);
+const isTemplateModalOpen = ref(false);
 const selectedTaskDetails = ref<DeploymentTask | null>(null);
+const selectedTemplateId = ref<string>('');
+const editingTaskId = ref<string>('');
 
 const initialFormState = () => ({
     name: '',
@@ -20,6 +26,8 @@ const initialFormState = () => ({
     masterServerId: props.servers.find(s => s.isMaster)?.id || '',
     slaveServerIds: [] as string[],
     remotePath: '',
+    slaveRemotePath: '',
+    slaveRemotePaths: {} as Record<string, string>,
     commands: ''
 });
 
@@ -28,6 +36,8 @@ const formData = ref(initialFormState());
 watch(() => props.autoOpenModal, (newVal) => {
     if (newVal) {
         isCreateModalOpen.value = true;
+        editingTaskId.value = '';
+        formData.value = initialFormState();
         emit('modalClose');
     }
 });
@@ -37,52 +47,76 @@ const slaves = computed(() => props.servers.filter(s => !s.isMaster));
 
 const handleCreateTask = () => {
     if (!formData.value.name || !formData.value.remotePath || !formData.value.masterServerId) {
-        alert('请检查：任务名称、主节点及远程路径为必填项');
+        ShowMessageDialog('必填项缺失', '请检查：任务名称、主节点及主控远程路径为必填项', 'warning');
         return;
     }
 
-    const newTask: DeploymentTask = {
-        id: 'task-' + Math.random().toString(36).substring(2, 9),
+    const newTask = {
         name: formData.value.name,
         svnResourceId: formData.value.svnResourceId,
         masterServerId: formData.value.masterServerId,
         slaveServerIds: formData.value.slaveServerIds,
         remotePath: formData.value.remotePath,
+        slaveRemotePath: formData.value.slaveRemotePath,
+        slaveRemotePaths: formData.value.slaveRemotePaths,
         commands: formData.value.commands.split('\n').map(c => c.trim()).filter(c => c),
-        status: TaskStatus.IDLE,
-        progress: 0,
-        logs: [`[${new Date().toLocaleTimeString()}] [系统] 初始化任务流成功，等待用户触发执行。`]
     };
 
-    emit('addTask', newTask);
+    if (editingTaskId.value) {
+        emit('saveTask', { id: editingTaskId.value, ...newTask });
+        editingTaskId.value = '';
+    } else {
+        emit('addTask', newTask);
+    }
     isCreateModalOpen.value = false;
     formData.value = initialFormState();
 };
 
-const simulateRun = async (task: DeploymentTask) => {
+const closeCreateModal = () => {
+    isCreateModalOpen.value = false;
+    editingTaskId.value = '';
+    formData.value = initialFormState();
+};
+
+const runTask = async (task: DeploymentTask) => {
     if (task.status !== TaskStatus.IDLE && task.status !== TaskStatus.FAILED && task.status !== TaskStatus.SUCCESS) return;
+    const targets = [
+        props.servers.find(s => s.id === task.masterServerId),
+        ...props.servers.filter(s => task.slaveServerIds.includes(s.id))
+    ].filter(Boolean) as RemoteServer[];
 
-    const stages = [
-        { status: TaskStatus.DOWNLOADING, progress: 15, log: '正在建立 SVN 安全隧道并获取修订号 R-' + (props.resources.find(r => r.id === task.svnResourceId)?.revision || 'HEAD') + ' ...' },
-        { status: TaskStatus.DOWNLOADING, progress: 30, log: 'SVN 资源检出完成。MD5: ' + Math.random().toString(16).substring(2, 8) + '。' },
-        { status: TaskStatus.UPLOADING, progress: 45, log: '正在通过 ' + (props.servers.find(s => s.id === task.masterServerId)?.protocol || 'SFTP') + ' 上传资源包至主控机...' },
-        { status: TaskStatus.SYNCING, progress: 65, log: '主控机正在通过 P2P 协议向 ' + task.slaveServerIds.length + ' 台从机广播增量数据...' },
-        { status: TaskStatus.EXECUTING, progress: 85, log: '数据一致性校验通过。正在启动远程自定义脚本执行序列...' },
-        { status: TaskStatus.SUCCESS, progress: 100, log: '✓ 任务执行成功。所有节点已同步至最新状态。' }
-    ];
+    const missing: string[] = [];
+    for (const node of targets) {
+        const authMethod = node.authMethod || 'password';
+        if (authMethod === 'key' || authMethod === 'agent') {
+            continue;
+        }
+        const username = node.username || 'root';
+        const has = await HasStoredCredential(node.id, username);
+        if (!has) {
+            missing.push(`${node.name || node.ip}(${username})`);
+        }
+    }
+    if (missing.length > 0) {
+        await ShowMessageDialog('无法执行任务', `以下节点未保存密码，无法执行任务：\\n${missing.join('\\n')}`, 'error');
+        return;
+    }
 
-    let currentLogs = [...task.logs, `[${new Date().toLocaleTimeString()}] [信息] 启动自动化分发流水线...`];
-    emit('updateTask', { ...task, status: TaskStatus.DOWNLOADING, progress: 5, logs: currentLogs });
-
-    for (const stage of stages) {
-        await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
-        currentLogs = [...currentLogs, `[${new Date().toLocaleTimeString()}] ${stage.log}`];
-        emit('updateTask', {
-            ...task,
-            status: stage.status,
-            progress: stage.progress,
-            logs: currentLogs
-        });
+    const request = internal.TaskRunRequest.createFrom({
+        taskId: task.id,
+        taskName: task.name,
+        svnResourceId: task.svnResourceId,
+        masterServerId: task.masterServerId,
+        slaveServerIds: task.slaveServerIds,
+        remotePath: task.remotePath,
+        slaveRemotePath: task.slaveRemotePath,
+        slaveRemotePaths: task.slaveRemotePaths,
+        commands: task.commands,
+    });
+    try {
+        await ExecuteTask(request);
+    } catch (err: any) {
+        await ShowMessageDialog('任务启动失败', `${err?.message || err}`, 'error');
     }
 };
 
@@ -92,7 +126,68 @@ const toggleSlaveSelection = (id: string) => {
         formData.value.slaveServerIds.push(id);
     } else {
         formData.value.slaveServerIds.splice(index, 1);
+        if (formData.value.slaveRemotePaths[id]) {
+            delete formData.value.slaveRemotePaths[id];
+        }
     }
+};
+
+const handleDeleteTask = async (task: DeploymentTask) => {
+    const ok = await ConfirmDialog('确认删除', `确定要删除任务：${task.name} 吗？`);
+    if (!ok) return;
+    emit('deleteTask', task.id);
+    if (selectedTaskDetails.value?.id === task.id) {
+        selectedTaskDetails.value = null;
+    }
+};
+
+const handleSaveTemplate = async () => {
+    if (!selectedTaskDetails.value) return;
+    emit('createTemplate', {
+        name: selectedTaskDetails.value.name,
+        svnResourceId: selectedTaskDetails.value.svnResourceId,
+        masterServerId: selectedTaskDetails.value.masterServerId,
+        slaveServerIds: selectedTaskDetails.value.slaveServerIds,
+        remotePath: selectedTaskDetails.value.remotePath,
+        slaveRemotePath: selectedTaskDetails.value.slaveRemotePath,
+        slaveRemotePaths: selectedTaskDetails.value.slaveRemotePaths,
+        commands: selectedTaskDetails.value.commands,
+        sourceTaskId: selectedTaskDetails.value.id,
+    });
+};
+
+const handleCloneFromTemplate = () => {
+    const tpl = props.templates.find(t => t.id === selectedTemplateId.value);
+    if (!tpl) return;
+    emit('addTask', {
+        name: `${tpl.name}-克隆`,
+        svnResourceId: tpl.svnResourceId,
+        masterServerId: tpl.masterServerId,
+        slaveServerIds: tpl.slaveServerIds,
+        remotePath: tpl.remotePath,
+        slaveRemotePath: tpl.slaveRemotePath,
+        slaveRemotePaths: tpl.slaveRemotePaths,
+        commands: tpl.commands,
+        templateId: tpl.id,
+    });
+    isTemplateModalOpen.value = false;
+    selectedTemplateId.value = '';
+};
+
+const handleEditTask = (task: DeploymentTask) => {
+    editingTaskId.value = task.id;
+    formData.value = {
+        name: task.name,
+        svnResourceId: task.svnResourceId,
+        masterServerId: task.masterServerId,
+        slaveServerIds: [...task.slaveServerIds],
+        remotePath: task.remotePath,
+        slaveRemotePath: task.slaveRemotePath || '',
+        slaveRemotePaths: { ...(task.slaveRemotePaths || {}) },
+        commands: task.commands.join('\n'),
+    };
+    isCreateModalOpen.value = true;
+    selectedTaskDetails.value = null;
 };
 </script>
 
@@ -115,6 +210,10 @@ const toggleSlaveSelection = (id: string) => {
                 <p class="text-slate-400 text-sm leading-relaxed mb-8 font-medium">
                     在这里定义复杂的部署逻辑。您可以选择 SVN 源码库，指定主控分发节点及目标从机群组，并编写在远程服务器上运行的 Bash 指令序列。系统将自动处理并发分发和日志采集。
                 </p>
+                <p class="text-[10px] font-bold text-amber-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2 inline-flex items-center space-x-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>主控机同步从机使用用户名+密码方式，请确保从机密码已保存。</span>
+                </p>
                 <div class="flex space-x-4">
                     <button @click="isCreateModalOpen = true"
                         class="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-xs shadow-xl hover:bg-blue-500 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center space-x-3">
@@ -122,6 +221,7 @@ const toggleSlaveSelection = (id: string) => {
                         <span>构建新工作流</span>
                     </button>
                     <button
+                        @click="isTemplateModalOpen = true"
                         class="bg-white/5 border border-white/10 hover:bg-white/10 px-8 py-3 rounded-xl font-bold text-xs transition-all text-slate-300 flex items-center space-x-2">
                         <i class="fa-solid fa-clone"></i>
                         <span>从模板克隆</span>
@@ -184,6 +284,14 @@ const toggleSlaveSelection = (id: string) => {
                     <div class="flex items-center space-x-6 text-[11px] text-slate-400 font-bold">
                         <span class="flex items-center space-x-2"><i class="fa-solid fa-folder-tree text-blue-400"></i>
                             <span class="text-slate-600">{{ task.remotePath }}</span></span>
+                        <span class="flex items-center space-x-2"><i class="fa-solid fa-folder-open text-slate-400"></i>
+                            <span class="text-slate-500">
+                                {{
+                                    task.slaveRemotePaths && Object.keys(task.slaveRemotePaths).length > 0
+                                        ? '从机路径：自定义'
+                                        : (task.slaveRemotePath ? task.slaveRemotePath : '从机路径同主控')
+                                }}
+                            </span></span>
                         <span class="flex items-center space-x-2"><i class="fa-solid fa-server text-indigo-400"></i>
                             <span class="text-slate-600">{{ task.slaveServerIds.length }} 台从机</span></span>
                     </div>
@@ -202,12 +310,17 @@ const toggleSlaveSelection = (id: string) => {
                 </div>
 
                 <div class="flex items-center space-x-3 shrink-0">
+                    <button @click="emit('viewLogs', task.id)"
+                        class="w-11 h-11 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm"
+                        title="查看运行日志">
+                        <i class="fa-solid fa-terminal text-sm"></i>
+                    </button>
                     <button @click="selectedTaskDetails = task"
                         class="w-11 h-11 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-slate-400 hover:text-blue-600 hover:bg-blue-50 hover:border-blue-200 transition-all shadow-sm"
                         title="查看任务参数详情">
                         <i class="fa-solid fa-sliders text-sm"></i>
                     </button>
-                    <button @click="simulateRun(task)"
+                    <button @click="runTask(task)"
                         :disabled="task.status !== TaskStatus.IDLE && task.status !== TaskStatus.SUCCESS" :class="['px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg flex items-center space-x-3',
                             (task.status !== TaskStatus.IDLE && task.status !== TaskStatus.SUCCESS)
                                 ? 'bg-slate-100 text-slate-300 cursor-not-allowed shadow-none'
@@ -238,7 +351,7 @@ const toggleSlaveSelection = (id: string) => {
                                     your automated deployment pipeline</p>
                             </div>
                         </div>
-                        <button @click="isCreateModalOpen = false"
+                        <button @click="closeCreateModal"
                             class="w-12 h-12 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-400 transition-colors">
                             <i class="fa-solid fa-xmark text-xl"></i>
                         </button>
@@ -291,7 +404,7 @@ const toggleSlaveSelection = (id: string) => {
                                 <div class="space-y-2">
                                     <label
                                         class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">4.
-                                        远程部署根路径</label>
+                                        主控机部署路径</label>
                                     <div class="relative group">
                                         <i class="fa-solid fa-folder absolute left-6 top-4.5 text-blue-400 mt-0.5"></i>
                                         <input type="text" v-model="formData.remotePath"
@@ -303,6 +416,18 @@ const toggleSlaveSelection = (id: string) => {
                                 <div class="space-y-3">
                                     <label
                                         class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">5.
+                                        从机部署路径 (可选)</label>
+                                    <div class="relative group">
+                                        <i class="fa-solid fa-folder-tree absolute left-6 top-4.5 text-slate-300 mt-0.5"></i>
+                                        <input type="text" v-model="formData.slaveRemotePath"
+                                            placeholder="留空则与主控机一致"
+                                            class="w-full pl-14 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs font-bold text-slate-600 outline-none focus:bg-white focus:border-blue-500 transition-all" />
+                                    </div>
+                                </div>
+
+                                <div class="space-y-3">
+                                    <label
+                                        class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">6.
                                         分发目标节点 (Slaves)</label>
                                     <div class="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                                         <div v-for="s in slaves" :key="s.id" @click="toggleSlaveSelection(s.id)"
@@ -321,6 +446,16 @@ const toggleSlaveSelection = (id: string) => {
                                                     <p
                                                         :class="['text-[9px] font-mono', formData.slaveServerIds.includes(s.id) ? 'text-blue-100' : 'text-slate-400']">
                                                         {{ s.ip }}</p>
+                                                    <div v-if="formData.slaveServerIds.includes(s.id)" class="mt-2">
+                                                        <input
+                                                            type="text"
+                                                            :value="formData.slaveRemotePaths[s.id] || ''"
+                                                            @click.stop
+                                                            @input="(e) => formData.slaveRemotePaths[s.id] = (e.target as HTMLInputElement).value"
+                                                            placeholder="从机独立路径 (可选)"
+                                                            class="w-40 px-2 py-1 rounded bg-white/90 text-[9px] font-mono text-slate-700 border border-white/30 outline-none"
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                             <i v-if="formData.slaveServerIds.includes(s.id)"
@@ -335,7 +470,7 @@ const toggleSlaveSelection = (id: string) => {
                         <div class="flex-1 bg-slate-900 flex flex-col relative">
                             <div class="px-8 py-10 flex flex-col h-full">
                                 <div class="flex items-center justify-between mb-4">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">6.
+                                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">7.
                                         后置自定义脚本 (Bash)</label>
                                     <span
                                         class="text-[9px] font-mono text-emerald-500 flex items-center space-x-2 bg-emerald-500/10 px-2 py-1 rounded">
@@ -365,13 +500,13 @@ const toggleSlaveSelection = (id: string) => {
 
                     <!-- Footer -->
                     <div class="px-10 py-8 border-t border-slate-100 bg-slate-50/80 flex justify-end space-x-6">
-                        <button @click="isCreateModalOpen = false"
+                        <button @click="closeCreateModal"
                             class="px-8 py-3 text-xs font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">
                             放弃此次构建
                         </button>
                         <button @click="handleCreateTask"
                             class="px-14 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-2xl hover:bg-blue-600 hover:-translate-y-1 active:translate-y-0 transition-all uppercase tracking-[0.15em]">
-                            生成自动化工作流
+                            {{ editingTaskId ? '保存编排修改' : '生成自动化工作流' }}
                         </button>
                     </div>
                 </div>
@@ -429,6 +564,11 @@ const toggleSlaveSelection = (id: string) => {
                                     <p class="text-[9px] text-blue-400 font-bold uppercase mb-2">部署绝对路径映射</p>
                                     <p class="text-xs font-mono font-black text-blue-700 truncate select-all">{{
                                         selectedTaskDetails.remotePath }}</p>
+                                    <p v-if="selectedTaskDetails.slaveRemotePath"
+                                        class="text-[9px] text-blue-400 font-bold uppercase mt-3 mb-1">从机部署路径</p>
+                                    <p v-if="selectedTaskDetails.slaveRemotePath"
+                                        class="text-[10px] font-mono font-black text-blue-600 truncate select-all">
+                                        {{ selectedTaskDetails.slaveRemotePath }}</p>
                                 </div>
                             </div>
                         </section>
@@ -470,6 +610,21 @@ const toggleSlaveSelection = (id: string) => {
                                             class="text-[10px] text-slate-400 italic">未配置任何从节点</div>
                                     </div>
                                 </div>
+                                <div v-if="selectedTaskDetails.slaveServerIds.length > 0"
+                                    class="p-5 bg-white rounded-2xl border border-slate-200">
+                                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-3">从机部署路径映射</p>
+                                    <div class="space-y-2">
+                                        <div v-for="sid in selectedTaskDetails.slaveServerIds" :key="sid"
+                                            class="flex items-center justify-between text-[10px] font-mono">
+                                            <span class="text-slate-500">
+                                                {{ servers.find(s => s.id === sid)?.name || sid }}
+                                            </span>
+                                            <span class="text-slate-700">
+                                                {{ (selectedTaskDetails.slaveRemotePaths && selectedTaskDetails.slaveRemotePaths[sid]) || selectedTaskDetails.slaveRemotePath || selectedTaskDetails.remotePath }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </section>
 
@@ -497,11 +652,79 @@ const toggleSlaveSelection = (id: string) => {
 
                     <div
                         class="p-10 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between shrink-0">
-                        <button
+                        <button @click="handleDeleteTask(selectedTaskDetails!)"
                             class="text-xs font-black text-red-500 hover:bg-red-50 px-6 py-3 rounded-xl transition-all uppercase tracking-widest">删除工作流</button>
-                        <button @click="simulateRun(selectedTaskDetails!); selectedTaskDetails = null"
+                        <button @click="handleSaveTemplate"
+                            class="text-xs font-black text-slate-600 hover:bg-slate-100 px-6 py-3 rounded-xl transition-all uppercase tracking-widest">保存为模板</button>
+                        <button @click="handleEditTask(selectedTaskDetails!)"
+                            class="text-xs font-black text-slate-600 hover:bg-slate-100 px-6 py-3 rounded-xl transition-all uppercase tracking-widest">编辑配置</button>
+                        <button @click="runTask(selectedTaskDetails!); selectedTaskDetails = null"
                             class="bg-slate-900 text-white px-12 py-3 rounded-2xl text-xs font-black shadow-xl hover:bg-blue-600 transition-all active:scale-95 uppercase tracking-widest">
                             确认并立即触发
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Template Modal -->
+        <Teleport to="body">
+            <div v-if="isTemplateModalOpen"
+                class="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[70] flex items-center justify-center p-6">
+                <div
+                    class="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden border border-white/10 flex flex-col animate-in zoom-in-95 duration-300">
+                    <div class="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+                                <i class="fa-solid fa-clone text-base"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-black text-slate-800 tracking-tight">选择模板</h3>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Clone from
+                                    saved templates</p>
+                            </div>
+                        </div>
+                        <button @click="isTemplateModalOpen = false"
+                            class="w-10 h-10 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-400 transition-colors">
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+                    <div class="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                        <div v-if="templates.length === 0"
+                            class="p-8 border border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-sm">
+                            暂无模板，请先从任务详情中保存模板。
+                        </div>
+                        <div v-for="tpl in templates" :key="tpl.id"
+                            class="border border-slate-200 rounded-2xl p-4 flex items-center justify-between hover:border-indigo-200 hover:bg-indigo-50/40 transition-all">
+                            <label class="flex items-center space-x-3 cursor-pointer">
+                                <input type="radio" class="accent-indigo-600" :value="tpl.id"
+                                    v-model="selectedTemplateId" />
+                                <div>
+                                    <p class="text-sm font-black text-slate-800">{{ tpl.name }}</p>
+                                    <p class="text-[10px] font-mono text-slate-400 mt-1">{{ tpl.remotePath }}</p>
+                                    <p class="text-[9px] font-mono text-slate-300 mt-1">
+                                        {{
+                                            tpl.slaveRemotePaths && Object.keys(tpl.slaveRemotePaths).length > 0
+                                                ? '从机路径：自定义'
+                                                : (tpl.slaveRemotePath ? tpl.slaveRemotePath : '从机路径同主控')
+                                        }}
+                                    </p>
+                                </div>
+                            </label>
+                            <button @click="emit('deleteTemplate', tpl.id)"
+                                class="w-9 h-9 rounded-xl border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="px-8 py-6 border-t border-slate-100 bg-slate-50/80 flex justify-end space-x-4">
+                        <button @click="isTemplateModalOpen = false"
+                            class="px-6 py-2 text-xs font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors">
+                            取消
+                        </button>
+                        <button @click="handleCloneFromTemplate" :disabled="!selectedTemplateId"
+                            class="px-8 py-2 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-xl hover:bg-indigo-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed uppercase tracking-widest">
+                            使用模板创建
                         </button>
                     </div>
                 </div>

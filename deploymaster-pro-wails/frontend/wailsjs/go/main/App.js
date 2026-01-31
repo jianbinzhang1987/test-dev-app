@@ -6,8 +6,28 @@ export function AddNode(arg1) {
   return window['go']['main']['App']['AddNode'](arg1);
 }
 
+export function AddSVNResource(arg1) {
+  return window['go']['main']['App']['AddSVNResource'](arg1);
+}
+
+export function AddTask(arg1) {
+  return window['go']['main']['App']['AddTask'](arg1);
+}
+
+export function AddTaskTemplate(arg1) {
+  return window['go']['main']['App']['AddTaskTemplate'](arg1);
+}
+
 export function BatchTestConnections(arg1, arg2) {
   return window['go']['main']['App']['BatchTestConnections'](arg1, arg2);
+}
+
+export function CheckoutSVNResource(arg1, arg2) {
+  return window['go']['main']['App']['CheckoutSVNResource'](arg1, arg2);
+}
+
+export function ConfirmDialog(arg1, arg2) {
+  return window['go']['main']['App']['ConfirmDialog'](arg1, arg2);
 }
 
 export function DeleteCredential(arg1, arg2) {
@@ -18,12 +38,56 @@ export function DeleteNode(arg1) {
   return window['go']['main']['App']['DeleteNode'](arg1);
 }
 
+export function DeleteSVNResource(arg1) {
+  return window['go']['main']['App']['DeleteSVNResource'](arg1);
+}
+
+export function DeleteTask(arg1) {
+  return window['go']['main']['App']['DeleteTask'](arg1);
+}
+
+export function DeleteTaskRun(arg1) {
+  return window['go']['main']['App']['DeleteTaskRun'](arg1);
+}
+
+export function DeleteTaskRunsByTask(arg1) {
+  return window['go']['main']['App']['DeleteTaskRunsByTask'](arg1);
+}
+
+export function DeleteTaskTemplate(arg1) {
+  return window['go']['main']['App']['DeleteTaskTemplate'](arg1);
+}
+
+export function ExecuteTask(arg1) {
+  return window['go']['main']['App']['ExecuteTask'](arg1);
+}
+
 export function GetNode(arg1) {
   return window['go']['main']['App']['GetNode'](arg1);
 }
 
 export function GetNodes() {
   return window['go']['main']['App']['GetNodes']();
+}
+
+export function GetSVNResources() {
+  return window['go']['main']['App']['GetSVNResources']();
+}
+
+export function GetTaskRuns() {
+  return window['go']['main']['App']['GetTaskRuns']();
+}
+
+export function GetTaskRunsByTask(arg1) {
+  return window['go']['main']['App']['GetTaskRunsByTask'](arg1);
+}
+
+export function GetTaskTemplates() {
+  return window['go']['main']['App']['GetTaskTemplates']();
+}
+
+export function GetTasks() {
+  return window['go']['main']['App']['GetTasks']();
 }
 
 export function GetTopology() {
@@ -42,6 +106,14 @@ export function HasStoredKeyPassphrase(arg1) {
   return window['go']['main']['App']['HasStoredKeyPassphrase'](arg1);
 }
 
+export function HasStoredSVNCredential(arg1, arg2) {
+  return window['go']['main']['App']['HasStoredSVNCredential'](arg1, arg2);
+}
+
+export function RefreshSVNResource(arg1) {
+  return window['go']['main']['App']['RefreshSVNResource'](arg1);
+}
+
 export function SaveCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveCredential'](arg1, arg2, arg3, arg4);
 }
@@ -50,8 +122,16 @@ export function SaveKeyPassphrase(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveKeyPassphrase'](arg1, arg2, arg3);
 }
 
+export function SaveSVNCredential(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveSVNCredential'](arg1, arg2, arg3, arg4);
+}
+
 export function SelectKeyFile() {
   return window['go']['main']['App']['SelectKeyFile']();
+}
+
+export function ShowMessageDialog(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ShowMessageDialog'](arg1, arg2, arg3);
 }
 
 export function TestConnectionWithCredentials(arg1, arg2, arg3, arg4, arg5) {
@@ -62,6 +142,22 @@ export function TestNodeConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestNodeConnection'](arg1, arg2, arg3);
 }
 
+export function TestSVNConnection(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TestSVNConnection'](arg1, arg2, arg3, arg4);
+}
+
 export function UpdateNode(arg1) {
   return window['go']['main']['App']['UpdateNode'](arg1);
+}
+
+export function UpdateSVNResource(arg1) {
+  return window['go']['main']['App']['UpdateSVNResource'](arg1);
+}
+
+export function UpdateTask(arg1) {
+  return window['go']['main']['App']['UpdateTask'](arg1);
+}
+
+export function UpdateTaskTemplate(arg1) {
+  return window['go']['main']['App']['UpdateTaskTemplate'](arg1);
 }

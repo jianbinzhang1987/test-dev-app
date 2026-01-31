@@ -27,7 +27,7 @@ func NewTester(credStore *credential.Store) *Tester {
 // 如果node.AuthMethod未设置，则使用传入的username/password进行密码认证
 func (t *Tester) TestConnection(node *internal.Node, username, password string) *internal.NodeStatus {
 	status := &internal.NodeStatus{
-		LastChecked: time.Now(),
+		LastChecked: time.Now().Format(time.RFC3339),
 		Status:      internal.StatusTesting,
 	}
 
@@ -118,7 +118,7 @@ func (t *Tester) TestConnection(node *internal.Node, username, password string) 
 // 用于首次测试或更新凭据时使用
 func (t *Tester) TestConnectionWithCredentials(node *internal.Node, username, password, keyPassphrase string) *internal.NodeStatus {
 	status := &internal.NodeStatus{
-		LastChecked: time.Now(),
+		LastChecked: time.Now().Format(time.RFC3339),
 		Status:      internal.StatusTesting,
 	}
 
@@ -207,7 +207,7 @@ func (t *Tester) BatchTestConnections(nodes []*internal.Node, username, password
 // QuickPing 快速Ping测试（仅测试TCP连接，不进行SSH认证）
 func (t *Tester) QuickPing(node *internal.Node) *internal.NodeStatus {
 	status := &internal.NodeStatus{
-		LastChecked: time.Now(),
+		LastChecked: time.Now().Format(time.RFC3339),
 		Status:      internal.StatusTesting,
 	}
 

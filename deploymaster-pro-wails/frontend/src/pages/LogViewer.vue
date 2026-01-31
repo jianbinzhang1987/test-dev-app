@@ -1,33 +1,81 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { DeploymentTask } from '../types';
+import { ref, watch, computed } from 'vue';
+import { TaskRun } from '../types';
 
 const props = defineProps<{
-    tasks: DeploymentTask[];
+    runs: TaskRun[];
+    selectedRunId?: string | null;
+    selectedTaskId?: string | null;
 }>();
 
-const selectedTask = ref<DeploymentTask | null>(props.tasks[0] || null);
+const selectedRun = ref<TaskRun | null>(props.runs[0] || null);
 
-watch(() => props.tasks, (newTasks) => {
-    if (!selectedTask.value && newTasks.length > 0) {
-        selectedTask.value = newTasks[0];
-    } else if (selectedTask.value) {
-        // Keep the reference updated if the object itself changes (though Vue's reactivity should handle this if it's the same object)
-        const updated = newTasks.find(t => t.id === selectedTask.value?.id);
-        if (updated) selectedTask.value = updated;
+watch(() => props.runs, (newRuns) => {
+    if (props.selectedTaskId) {
+        const match = newRuns.find(r => r.taskId === props.selectedTaskId);
+        if (match) {
+            selectedRun.value = match;
+            return;
+        }
+    }
+    if (!selectedRun.value && newRuns.length > 0) {
+        selectedRun.value = newRuns[0];
+    } else if (selectedRun.value) {
+        const updated = newRuns.find(r => r.id === selectedRun.value?.id);
+        if (updated) selectedRun.value = updated;
     }
 }, { deep: true });
+
+watch(() => props.selectedRunId, (id) => {
+    if (!id) return;
+    const run = props.runs.find(r => r.id === id);
+    if (run) selectedRun.value = run;
+});
+
+watch(() => props.selectedTaskId, (taskId) => {
+    if (!taskId) return;
+    const run = props.runs.find(r => r.taskId === taskId);
+    if (run) selectedRun.value = run;
+});
+
+const parseRunTime = (value?: string) => {
+    if (!value) return null;
+    const parts = value.trim().split(' ');
+    if (parts.length === 2) {
+        const [d, t] = parts;
+        const [y, m, day] = d.split('-').map(Number);
+        const [hh, mm, ss] = t.split(':').map(Number);
+        if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(day) && Number.isFinite(hh) && Number.isFinite(mm)) {
+            return new Date(y, m - 1, day, hh, mm, Number.isFinite(ss) ? ss : 0);
+        }
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const durationText = computed(() => {
+    if (!selectedRun.value) return '';
+    const start = parseRunTime(selectedRun.value.startedAt);
+    const end = parseRunTime(selectedRun.value.finishedAt) || new Date();
+    if (!start) return '';
+    const ms = Math.max(0, end.getTime() - start.getTime());
+    const sec = ms / 1000;
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    const min = Math.floor(sec / 60);
+    const rem = Math.round(sec % 60);
+    return `${min}m ${rem}s`;
+});
 </script>
 
 <template>
     <div class="h-full flex flex-col space-y-3">
         <!-- Task Selector Tabs -->
         <div class="flex space-x-2 overflow-x-auto pb-2 shrink-0">
-            <button v-for="task in tasks" :key="task.id" @click="selectedTask = task" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border',
-                selectedTask?.id === task.id
+            <button v-for="run in runs" :key="run.id" @click="selectedRun = run" :class="['px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border',
+                selectedRun?.id === run.id
                     ? 'bg-blue-600 text-white border-blue-600 shadow-md'
                     : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50']">
-                {{ task.name }}
+                {{ run.taskName }} · {{ run.startedAt }}
             </button>
         </div>
 
@@ -44,7 +92,7 @@ watch(() => props.tasks, (newTasks) => {
                     <span
                         class="text-[10px] font-mono text-slate-500 font-black uppercase tracking-widest ml-4 flex items-center space-x-2">
                         <i class="fa-solid fa-terminal text-[8px]"></i>
-                        <span>终端输出: {{ selectedTask?.name || '未选择任务' }}</span>
+                        <span>终端输出: {{ selectedRun?.taskName || '未选择任务' }}</span>
                     </span>
                 </div>
                 <div class="flex items-center space-x-4">
@@ -62,8 +110,8 @@ watch(() => props.tasks, (newTasks) => {
 
             <!-- Terminal Body -->
             <div class="flex-1 p-6 font-mono text-[11px] overflow-y-auto space-y-1.5 leading-relaxed">
-                <template v-if="selectedTask">
-                    <div v-for="(log, idx) in selectedTask.logs" :key="idx"
+                <template v-if="selectedRun">
+                    <div v-for="(log, idx) in selectedRun.logs" :key="idx"
                         class="flex space-x-4 hover:bg-white/5 p-0.5 rounded transition-colors group">
                         <span class="text-slate-600 select-none w-8 text-right shrink-0">{{ idx + 1 }}</span>
                         <span :class="[
@@ -75,16 +123,16 @@ watch(() => props.tasks, (newTasks) => {
                         </span>
                     </div>
 
-                    <div v-if="selectedTask.progress < 100" class="flex space-x-4 mt-2">
-                        <span class="text-slate-600 select-none w-8 text-right">{{ selectedTask.logs.length + 1
+                    <div v-if="selectedRun.progress < 100" class="flex space-x-4 mt-2">
+                        <span class="text-slate-600 select-none w-8 text-right">{{ selectedRun.logs.length + 1
                             }}</span>
                         <span class="text-blue-400 animate-pulse italic">正在等待命令响应... _</span>
                     </div>
 
-                    <div v-if="selectedTask.progress === 100" class="mt-8 pt-4 border-t border-white/5">
+                    <div v-if="selectedRun.progress === 100" class="mt-8 pt-4 border-t border-white/5">
                         <p class="text-emerald-500 font-black tracking-tight flex items-center space-x-2">
                             <i class="fa-solid fa-circle-check"></i>
-                            <span>工作流已完成，共计用时 12.4s</span>
+                            <span>工作流已完成，共计用时 {{ durationText || '0.0s' }}</span>
                         </p>
                         <div class="grid grid-cols-2 gap-4 mt-2 text-[9px] text-slate-500">
                             <div class="bg-white/5 p-2 rounded">节点响应: Master(200 OK), Slave-01(200 OK), Slave-02(200 OK)

@@ -7,6 +7,13 @@ import (
 func TestCredentialStore(t *testing.T) {
 	store := NewStore("", nil)
 
+	// 探测系统 Keyring 是否可用（如无权限则跳过）
+	if err := store.SetPassword("probe-node", "probe-user", "probe-pass"); err != nil {
+		t.Skipf("Keyring unavailable, skip credential tests: %v", err)
+	} else {
+		_ = store.DeletePassword("probe-node", "probe-user")
+	}
+
 	nodeID := "test-node-123"
 	username := "testuser"
 	password := "test-password-123"
