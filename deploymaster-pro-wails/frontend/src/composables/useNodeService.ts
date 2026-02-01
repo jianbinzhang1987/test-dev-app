@@ -10,6 +10,7 @@ import {
     SaveKeyPassphrase,
     DeleteCredential,
     HasStoredCredential,
+    GetCredential,
     TestConnectionWithCredentials,
     SelectKeyFile
 } from '../../wailsjs/go/main/App';
@@ -253,6 +254,18 @@ export function useNodeService() {
     };
 
     /**
+     * 获取已保存的 SSH 密码明文（用于用户主动查看）
+     */
+    const getCredential = async (nodeId: string, username: string = 'root') => {
+        try {
+            return await GetCredential(nodeId, username);
+        } catch (err: any) {
+            console.error('获取凭据失败:', err);
+            throw err;
+        }
+    };
+
+    /**
      * 测试连接并可选保存凭据
      */
     const testWithCredentials = async (
@@ -302,6 +315,7 @@ export function useNodeService() {
         saveCredential,
         saveKeyPassphrase,
         hasStoredCredential,
+        getCredential,
         testWithCredentials,
         selectKeyFile
     };

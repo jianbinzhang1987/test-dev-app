@@ -277,7 +277,7 @@ const handleEditTask = (task: DeploymentTask) => {
                 </div>
                 <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4">
                     <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
-                        <i class="fa-solid fa-spinner animate-spin"></i>
+                        <i :class="['fa-solid fa-spinner', taskStats.running > 0 ? 'animate-spin' : '']"></i>
                     </div>
                     <div>
                         <p class="text-[10px] font-bold text-slate-400 uppercase">运行中</p>

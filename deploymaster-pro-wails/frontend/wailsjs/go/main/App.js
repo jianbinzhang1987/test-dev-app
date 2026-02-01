@@ -62,6 +62,10 @@ export function ExecuteTask(arg1) {
   return window['go']['main']['App']['ExecuteTask'](arg1);
 }
 
+export function GetCredential(arg1, arg2) {
+  return window['go']['main']['App']['GetCredential'](arg1, arg2);
+}
+
 export function GetNode(arg1) {
   return window['go']['main']['App']['GetNode'](arg1);
 }

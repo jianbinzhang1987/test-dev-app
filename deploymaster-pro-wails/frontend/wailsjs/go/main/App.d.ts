@@ -32,6 +32,8 @@ export function DeleteTaskTemplate(arg1:string):Promise<void>;
 
 export function ExecuteTask(arg1:internal.TaskRunRequest):Promise<void>;
 
+export function GetCredential(arg1:string,arg2:string):Promise<string>;
+
 export function GetNode(arg1:string):Promise<internal.Node>;
 
 export function GetNodes():Promise<Array<internal.Node>>;

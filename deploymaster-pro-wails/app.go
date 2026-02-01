@@ -253,6 +253,18 @@ func (a *App) HasStoredCredential(nodeID, username string) bool {
 	return a.credStore.HasPassword(nodeID, username)
 }
 
+// GetCredential 获取已保存的 SSH 密码明文
+// 注意：仅用于用户显式查看时调用
+func (a *App) GetCredential(nodeID, username string) (string, error) {
+	if a.credStore == nil {
+		return "", fmt.Errorf("credential store not initialized")
+	}
+	if nodeID == "" || username == "" {
+		return "", fmt.Errorf("invalid credential key")
+	}
+	return a.credStore.GetPassword(nodeID, username)
+}
+
 // HasStoredKeyPassphrase 检查节点是否已存储密钥密码短语
 func (a *App) HasStoredKeyPassphrase(nodeID string) bool {
 	if a.credStore == nil || nodeID == "" {

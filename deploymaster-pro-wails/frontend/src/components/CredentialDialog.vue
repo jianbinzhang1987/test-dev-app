@@ -147,9 +147,10 @@
                                     <input v-model="form.password" :type="showPassword ? 'text' : 'password'"
                                         :placeholder="hasStoredPassword ? '●●●●●● (已加密保存)' : '请输入您的 SSH 登录密码'"
                                         class="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono" />
-                                    <button @click="showPassword = !showPassword" type="button"
+                                    <button @click="togglePasswordVisibility" type="button"
                                         class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                                        <i :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
+                                        <i v-if="isFetchingPassword" class="fa-solid fa-spinner fa-spin"></i>
+                                        <i v-else :class="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'"></i>
                                     </button>
                                 </div>
                             </div>
@@ -291,14 +292,19 @@ const getDefaultForm = () => ({
 const form = reactive(getDefaultForm());
 
 const showPassword = ref(false);
+const isFetchingPassword = ref(false);
+const lastNodeId = ref<string | null>(null);
 const testing = ref(false);
 const success = ref(false);
 const error = ref('');
 const hasStoredPassword = ref(false);
 
 const checkStoredCredentials = async () => {
-    if (props.isEdit && props.nodeData?.id) {
-        hasStoredPassword.value = await nodeService.hasStoredCredential(props.nodeData.id, form.username || 'root');
+    if (props.isEdit && props.nodeData?.id && form.authMethod === 'password') {
+        hasStoredPassword.value = await nodeService.hasStoredCredential(
+            props.nodeData.id,
+            form.username || 'root'
+        );
     } else {
         hasStoredPassword.value = false;
     }
@@ -310,6 +316,9 @@ const resetForm = () => {
     success.value = false;
     testing.value = false;
     showPassword.value = false; // 强制隐藏
+    isFetchingPassword.value = false;
+    hasStoredPassword.value = false;
+    lastNodeId.value = null;
 };
 
 // 监听 visible 变化，开启时若非编辑模式则重置
@@ -317,16 +326,21 @@ watch(() => props.visible, (isVisible) => {
     if (isVisible) {
         error.value = '';
         success.value = false;
-        showPassword.value = false; // 每次打开都默认隐藏
+        showPassword.value = false; // 每次打开默认隐藏明文
         if (!props.isEdit) {
             resetForm();
+        } else {
+            checkStoredCredentials();
         }
+    } else {
+        hasStoredPassword.value = false;
     }
 });
 
 // 监听 nodeData 变化用于编辑模式
 watch(() => props.nodeData, (val) => {
     if (val && props.isEdit) {
+        const nextNodeId = val.id || null;
         if (val.name) form.name = val.name;
         if (val.ip) form.ip = val.ip;
         if (val.port) form.port = val.port;
@@ -335,8 +349,22 @@ watch(() => props.nodeData, (val) => {
         if (val.username) form.username = val.username;
         if (val.authMethod) form.authMethod = val.authMethod as AuthMethod;
         if (val.keyPath) form.keyPath = val.keyPath;
+        // 切换不同节点时，不复用上一次输入的敏感信息
+        if (nextNodeId && nextNodeId !== lastNodeId.value) {
+            form.password = '';
+            form.keyPassphrase = '';
+            showPassword.value = false;
+        }
+        lastNodeId.value = nextNodeId;
+        checkStoredCredentials();
     }
 }, { deep: true });
+
+watch(() => [form.username, form.authMethod], () => {
+    if (props.visible) {
+        checkStoredCredentials();
+    }
+});
 
 const canSubmit = computed(() => {
     if (!form.name || !form.ip || !form.port || !form.username) return false;
@@ -376,6 +404,40 @@ const onTestConnection = async () => {
     } finally {
         testing.value = false;
     }
+};
+
+const togglePasswordVisibility = async () => {
+    if (showPassword.value) {
+        showPassword.value = false;
+        return;
+    }
+
+    // 当前输入为空时，从密钥链取回明文
+    if (
+        form.authMethod === 'password'
+        && !form.password
+        && props.nodeData?.id
+    ) {
+        isFetchingPassword.value = true;
+        error.value = '';
+        try {
+            const plain = await nodeService.getCredential(props.nodeData.id, form.username || 'root');
+            form.password = plain || '';
+            if (!form.password) {
+                error.value = '未找到已保存的密码';
+                showPassword.value = false;
+                return;
+            }
+        } catch (err: any) {
+            error.value = err?.message || '读取密钥链失败';
+            showPassword.value = false;
+            return;
+        } finally {
+            isFetchingPassword.value = false;
+        }
+    }
+
+    showPassword.value = true;
 };
 
 const handleSubmit = async () => {
